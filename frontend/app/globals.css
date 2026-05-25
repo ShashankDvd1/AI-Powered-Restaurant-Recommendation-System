@@ -1,0 +1,137 @@
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --text: #e7ecf3;
+  --muted: #8b9cb3;
+  --accent: #e23744;
+  --accent-dim: #c42f3a;
+  --ok: #2ecc71;
+  --warn: #f39c12;
+  --error: #e74c3c;
+  --border: #2d3a4f;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+header {
+  margin-bottom: 2rem;
+}
+
+header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+header p {
+  color: var(--muted);
+  margin-top: 0.5rem;
+}
+
+.badge {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+}
+
+.health-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.health-card h2 {
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+code {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 0.85em;
+  background: var(--bg);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+
+code.path {
+  word-break: break-all;
+}
+
+.health-list {
+  list-style: none;
+  margin-top: 1rem;
+}
+
+.health-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.health-list li:last-child {
+  border-bottom: none;
+}
+
+.health-list span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.health-list .ok {
+  color: var(--ok);
+}
+
+.health-list .warn {
+  color: var(--warn);
+}
+
+.banner {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.banner.error {
+  background: rgba(231, 76, 60, 0.12);
+  border: 1px solid var(--error);
+}
+
+.banner p {
+  margin-top: 0.5rem;
+}
