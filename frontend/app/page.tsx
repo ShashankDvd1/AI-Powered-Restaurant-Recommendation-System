@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import HealthStatus from "@/components/HealthStatus";
 import PreferenceForm from "@/components/PreferenceForm";
 import SummaryBlock from "@/components/SummaryBlock";
 import RecommendationList from "@/components/RecommendationList";
@@ -47,7 +46,6 @@ export default function Home() {
         <p>
           Configure preferences to discover restaurants matching your taste, backed by real Zomato data.
         </p>
-        <span className="badge">Phase 5 · End-to-End Recommendations</span>
       </header>
 
       <div className="dashboard-grid">
@@ -61,7 +59,7 @@ export default function Home() {
           />
         </div>
 
-        {/* Right Column: Recommendations Results / Health Status */}
+        {/* Right Column: Recommendations Results */}
         <div className="results-column">
           
           {/* Loading Skeleton */}
@@ -85,7 +83,11 @@ export default function Home() {
           {/* Error Banner */}
           {error && (
             <div className="banner error">
-              <strong>Query Failed</strong>
+              <strong>
+                {error.toLowerCase().includes("location") || error.toLowerCase().includes("cuisine")
+                  ? "Check Preferences"
+                  : "Service Temporarily Busy"}
+              </strong>
               <p>{error}</p>
             </div>
           )}
@@ -104,9 +106,6 @@ export default function Home() {
               <p>No restaurants match your filters. Try lowering the minimum rating or selecting a different budget bucket.</p>
             </div>
           )}
-
-          {/* Health Status (always visible at the bottom or on load) */}
-          <HealthStatus />
         </div>
       </div>
     </main>

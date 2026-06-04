@@ -129,13 +129,22 @@ export default function PreferenceForm({
     } catch (err: any) {
       if (err.status === 422) {
         if (Array.isArray(err.detail)) {
-          const errors = err.detail.map((e: any) => `${e.loc.slice(1).join(".")}: ${e.msg}`).join(" | ");
-          onSubmitError(`Validation Error: ${errors}`);
+          const errors = err.detail
+            .map((e: any) => {
+              let msg = e.msg || "";
+              // Strip out "Value error, " prefix from backend validator
+              msg = msg.replace(/^Value error,\s*/i, "");
+              const fieldName = e.loc && e.loc.length > 1 ? e.loc[e.loc.length - 1] : "";
+              const cleanField = fieldName ? fieldName.charAt(0).toUpperCase() + fieldName.slice(1) : "";
+              return cleanField ? `${cleanField}: ${msg}` : msg;
+            })
+            .join(" | ");
+          onSubmitError(errors);
         } else {
           onSubmitError(err.detail || "Invalid inputs.");
         }
       } else {
-        onSubmitError(err.message || "Network error. Make sure the backend server is running.");
+        onSubmitError("Unable to reach the AI engine. Please verify the backend service is running or wake it up by refreshing.");
       }
     }
   };
