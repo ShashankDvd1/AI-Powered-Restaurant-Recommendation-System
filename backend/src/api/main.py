@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.routes import health, recommendations
+from src.api.routes import health, recommendations, metadata
 from src.config import get_settings
 
 settings = get_settings()
@@ -22,3 +22,5 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(recommendations.router)
+app.include_router(metadata.router)
+

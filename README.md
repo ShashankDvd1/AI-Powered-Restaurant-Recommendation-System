@@ -7,8 +7,13 @@ Zomato-inspired restaurant recommendations: structured filtering on real dataset
 | Phase | Status |
 |-------|--------|
 | 0 — Project setup | Done |
-| 1 — Data ingestion | Done (run `prepare_data` locally) |
-| 2–6 | Planned |
+| 1 — Data ingestion | Done (Zomato data loaded & preprocessed) |
+| 2 — User input & preference model | Done (Validation schemas & React autocomplete form) |
+| 3 — Integration layer | Done (Structured pre-LLM filtering pipeline) |
+| 4 — Grok recommendation engine | Done (OpenAI compatible integration, grounding, & fallbacks) |
+| 5 — Output display & UX | Done (Glassmorphic cards, ratings, tags, AI summary block) |
+| 6 — Testing & Hardening | Done (100% passing test suite for all modules) |
+
 
 ## Prerequisites
 
@@ -47,7 +52,7 @@ python -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 Or: `.\scripts\run_api.ps1`
 
 - `GET http://localhost:8000/health` — liveness + `data_ready` + row count
-- `POST http://localhost:8000/recommendations` — returns `501` until Phase 4
+- `POST http://localhost:8000/recommendations` — validates input preferences and returns Grok AI recommendations (grounded in the dataset, with a local fallback engine)
 
 ### 2. Frontend
 

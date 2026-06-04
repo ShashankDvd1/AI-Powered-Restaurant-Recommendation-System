@@ -20,8 +20,8 @@ This document defines a **phase-wise implementation plan** derived from [problem
 
 | Layer | Choice | Notes |
 |-------|--------|--------|
-| **LLM** | **Grok (xAI)** | Chat completions via [xAI API](https://docs.x.ai/) (OpenAI-compatible client) |
-| **Backend** | **Python 3.10+** | FastAPI REST API: ingestion, filters, Grok orchestration |
+| **LLM** | **Groq** | Chat completions via [Groq API](https://console.groq.com/) (OpenAI-compatible client) |
+| **Backend** | **Python 3.10+** | FastAPI REST API: ingestion, filters, Groq orchestration |
 | **Frontend** | **Next.js** (preferred) or **React** | Next.js App Router recommended; plain React + Vite acceptable if you skip SSR |
 | **Data** | `datasets`, `pandas` | Hugging Face Zomato dataset |
 | **Config** | `.env` per app | `backend/.env`, `frontend/.env.local` |
@@ -49,11 +49,11 @@ flowchart LR
     API --> UI
 ```
 
-**Grok integration (backend):**
+**Groq integration (backend):**
 
-- Env: `XAI_API_KEY`, `GROK_MODEL` (e.g. `grok-2-latest` or current model from xAI docs)
-- Use `openai` Python SDK with `base_url="https://api.x.ai/v1"` or official `xai-sdk` if you prefer
-- Keep API keys **only** on the backend; never expose `XAI_API_KEY` to the browser
+- Env: `GROQ_API_KEY`, `GROQ_MODEL` (e.g. `llama-3.3-70b-versatile` or current model from Groq docs)
+- Use `openai` Python SDK with `base_url="https://api.groq.com/openai/v1"`
+- Keep API keys **only** on the backend; never expose `GROQ_API_KEY` to the browser
 
 **Frontend choice:**
 
@@ -98,7 +98,7 @@ flowchart LR
 
 - FastAPI app stub: `GET /health`, `POST /recommendations` (501 until Phase 4)
 - Next.js/React home page stub calling `/health`
-- `backend/.env.example`: `XAI_API_KEY`, `GROK_MODEL`, `CORS_ORIGINS=http://localhost:3000`
+- `backend/.env.example`: `GROQ_API_KEY`, `GROQ_MODEL`, `CORS_ORIGINS=http://localhost:3000`
 - `frontend/.env.local.example`: `NEXT_PUBLIC_API_URL=http://localhost:8000`
 
 ### Acceptance criteria
@@ -176,28 +176,29 @@ flowchart LR
    - `top_k: int` (default 5; how many recommendations to show)
 2. **API contract** (backend Pydantic models mirror preferences):
    - `POST /recommendations` request body: location, budget, cuisine, min_rating, extra_preferences, top_k.
-   - `GET /metadata/locations` and `GET /metadata/cuisines` (optional) for frontend dropdowns.
+   - `GET /metadata/locations` and `GET /metadata/cuisines` (implemented) for frontend searchable autocompletes.
 3. **Frontend form** (Next.js/React):
    - Controlled inputs for all preference fields from the problem statement.
+   - Searchable autocomplete comboboxes for locations and cuisines.
    - Client-side validation before submit; display API validation errors.
 4. **Validation** (backend — source of truth)
    - Reject empty location/cuisine; bound `min_rating` to [0, 5].
-   - Normalize budget enum; suggest valid cities from dataset if unknown location.
-4. **Serialize for logging/debug**
-   - `preferences.to_dict()` for prompt injection and audit trail.
+   - Normalize budget enum; suggest close-match cities using `difflib.get_close_matches` if location is unrecognized.
+   - Serialize for logging/debug.
 
 ### Deliverables
 
 - `backend/src/models/preferences.py` — `UserPreferences` + validators
 - `backend/src/api/schemas.py` — request/response DTOs for FastAPI
-- `frontend/components/PreferenceForm.tsx` — submits to backend API
-- Optional `backend/scripts/test_preferences.py` for quick API checks without UI
+- `backend/src/api/routes/metadata.py` — locations and cuisines metadata router
+- `frontend/components/PreferenceForm.tsx` — submits to backend API with searchable dropdown autocomplete logic
+
 
 ### Acceptance criteria
 
 - Invalid API payloads return `422` with clear field errors
 - Frontend form submits valid JSON and receives structured error responses
-- Extra preferences are preserved as a string for Grok (Phase 4)
+- Extra preferences are preserved as a string for Groq (Phase 4)
 
 ### Dependencies
 
@@ -219,7 +220,7 @@ flowchart LR
 2. **Ranking pre-LLM (optional but recommended)**
    - Sort filtered results by rating (desc), then votes/popularity if available.
    - Cap candidates sent to LLM (e.g. top 20–30) to control token cost and latency.
-3. **Prompt template design** (`backend/src/llm/prompts.py`) — tuned for Grok:
+3. **Prompt template design** (`backend/src/llm/prompts.py`) — tuned for Groq:
    - System message: role (food recommendation assistant), rules (only use provided restaurants, no invented venues).
    - User message: JSON or markdown table of candidates + full `UserPreferences`.
    - Instructions: rank top N, explain each pick, optional one-paragraph summary.
@@ -244,7 +245,7 @@ flowchart LR
 ### Deliverables
 
 - `backend/src/filters/restaurant_filter.py`
-- `backend/src/llm/prompts.py` with versioned template constants (Grok system/user messages)
+- `backend/src/llm/prompts.py` with versioned template constants (Groq system/user messages)
 - `backend/src/services/recommendation_service.py` — orchestrates filter → prompt build
 - Unit tests: filter returns subset respecting all constraints
 
@@ -260,28 +261,28 @@ flowchart LR
 
 ---
 
-## Phase 4: Grok Recommendation Engine
+## Phase 4: Groq Recommendation Engine
 
-**Goal:** Call **Grok (xAI)** with the prepared prompt, parse the response, and merge AI output with ground-truth dataset fields.
+**Goal:** Call **Groq** with the prepared prompt, parse the response, and merge AI output with ground-truth dataset fields.
 
 ### Tasks
 
-1. **Grok client wrapper** (`backend/src/llm/grok_client.py`):
-   - Read `XAI_API_KEY` and `GROK_MODEL` from environment.
-   - Use OpenAI-compatible client: `OpenAI(api_key=..., base_url="https://api.x.ai/v1")` and `chat.completions.create`.
+1. **Groq client wrapper** (`backend/src/llm/grok_client.py`):
+   - Read `GROQ_API_KEY` and `GROQ_MODEL` from environment.
+   - Use OpenAI-compatible client: `OpenAI(api_key=..., base_url="https://api.groq.com/openai/v1")` and `chat.completions.create`.
    - Implement `get_recommendations(preferences, candidates) -> RecommendationResult`.
    - Handle timeouts, rate limits, and retries with backoff.
    - Request JSON-shaped output where supported (system prompt + `response_format` if model supports it).
 2. **Wire FastAPI** (`backend/src/api/routes/recommendations.py`):
-   - `POST /recommendations` runs full pipeline: validate → filter → Grok → grounded response.
+   - `POST /recommendations` runs full pipeline: validate → filter → Groq → grounded response.
 3. **Grounding & validation**
    - Match LLM `restaurant_name` to filtered candidates (fuzzy match if needed).
    - Drop or flag recommendations not in the candidate list.
    - Fill `rating` and `estimated_cost` from dataset when LLM omits or drifts.
 4. **Fallback behavior**
-   - If Grok fails or `XAI_API_KEY` is unset: return top-K by structured sort with template explanations (“High rating in your budget range”).
+   - If Groq fails or `GROQ_API_KEY` is unset: return top-K by structured sort with template explanations (“High rating in your budget range”).
 5. **Logging**
-   - Log prompt hash, token usage (xAI response metadata), and latency (no PII in logs).
+   - Log prompt hash, token usage (Groq response metadata), and latency (no PII in logs).
 
 ### Deliverables
 
@@ -289,13 +290,13 @@ flowchart LR
 - `backend/src/llm/parser.py` — JSON parse + validation
 - `backend/src/models/recommendation.py` — result types
 - `backend/src/api/routes/recommendations.py` — live endpoint
-- Integration test with mocked Grok response
+- Integration test with mocked Groq response
 
 ### Acceptance criteria
 
 - Every displayed recommendation maps to a row in the filtered candidate set
 - Each item includes a non-empty `explanation`
-- Optional `summary` field populated when Grok succeeds
+- Optional `summary` field populated when Groq succeeds
 - `POST /recommendations` returns JSON the frontend can render without transformation
 - System remains usable when API key is missing (fallback path documented)
 
@@ -313,7 +314,7 @@ flowchart LR
 
 1. **Results UI** (`frontend/components/RecommendationList.tsx`):
    - Card or table layout: Name, Cuisine, Rating, Estimated Cost, AI explanation.
-   - Show Grok `summary` at the top when present.
+   - Show Groq `summary` at the top when present.
    - Loading state and error banners (network, 422, 503, empty matches).
 2. **Pages / routing**
    - **Next.js:** `app/page.tsx` — form + results on home or `/recommend` route.
@@ -330,7 +331,7 @@ flowchart LR
 
 ### Deliverables
 
-- End-to-end flow: form submit → FastAPI → Grok → rendered cards
+- End-to-end flow: form submit → FastAPI → Groq → rendered cards
 - `frontend/components/PreferenceForm.tsx`, `RecommendationList.tsx`, `SummaryBlock.tsx`
 - Screenshot or GIF in `docs/` for README (optional)
 
@@ -338,8 +339,8 @@ flowchart LR
 
 - User sees exactly `top_k` recommendations (or fewer if data sparse)
 - All five output fields from the problem statement are visible in the UI
-- Full round-trip completes in acceptable time (&lt; ~30s including Grok for typical N)
-- No xAI secrets in frontend bundle or browser network tab
+- Full round-trip completes in acceptable time (&lt; ~30s including Groq for typical N)
+- No Groq secrets in frontend bundle or browser network tab
 
 ### Dependencies
 
@@ -354,8 +355,8 @@ flowchart LR
 ### Tasks
 
 1. **Tests**
-   - Backend: preprocessing, filters, Grok prompt building, response parser (mock xAI).
-   - Integration: `POST /recommendations` with fixture data and mocked Grok.
+   - Backend: preprocessing, filters, Groq prompt building, response parser (mock Groq).
+   - Integration: `POST /recommendations` with fixture data and mocked Groq.
    - Frontend (optional): component tests for form validation and result rendering.
 2. **Edge cases**
    - Unknown city, impossible rating+cuisine combo, single-row dataset slice.
@@ -425,11 +426,13 @@ Adjust durations to your schedule; Phases 3–4 are the critical path.
 
 - [x] **Phase 0:** Layout, deps, `.env.example`, README setup steps  
 - [x] **Phase 1:** Ingestion code + `python -m src.ingestion.prepare_data` (run locally for parquet)  
-- [ ] **Phase 2:** `UserPreferences` validated via API + frontend form  
-- [ ] **Phase 3:** Filters + prompt template; candidate cap enforced  
-- [ ] **Phase 4:** Grok returns parsed, grounded recommendations via `POST /recommendations`  
-- [ ] **Phase 5:** Next.js/React UI shows 5 fields per restaurant  
-- [ ] **Phase 6:** Tests pass; success criteria checklist signed off  
+- [x] **Phase 2:** `UserPreferences` validated via API + frontend form  
+- [x] **Phase 3:** Filters + prompt template; candidate cap enforced  
+- [x] **Phase 4:** Groq returns parsed, grounded recommendations via `POST /recommendations`  
+
+
+- [x] **Phase 5:** Next.js/React UI shows 5 fields per restaurant  
+- [x] **Phase 6:** Tests pass; success criteria checklist signed off  
 
 ---
 

@@ -6,10 +6,10 @@ This document describes the **target system architecture** for the Zomato-inspir
 
 ## 1. Purpose
 
-The system combines **structured restaurant data** (Hugging Face Zomato dataset) with **Grok (xAI)** to produce grounded, personalized recommendations. Architecture separates concerns:
+The system combines **structured restaurant data** (Hugging Face Zomato dataset) with **Groq** to produce grounded, personalized recommendations. Architecture separates concerns:
 
 - **Frontend** — collect preferences and display results
-- **Backend** — validate input, filter data, orchestrate Grok, enforce grounding
+- **Backend** — validate input, filter data, orchestrate Groq, enforce grounding
 - **External AI** — ranking and natural-language explanations only on a bounded candidate set
 
 ---
@@ -18,11 +18,11 @@ The system combines **structured restaurant data** (Hugging Face Zomato dataset)
 
 | Principle | Description |
 |-----------|-------------|
-| **Filter before AI** | Location, budget, cuisine, and rating filters run in Python before any Grok call |
-| **Grounded recommendations** | Grok may only recommend restaurants present in the filtered candidate list |
-| **Secrets on server** | `XAI_API_KEY` lives only in the backend; the browser never calls xAI directly |
+| **Filter before AI** | Location, budget, cuisine, and rating filters run in Python before any Groq call |
+| **Grounded recommendations** | Groq may only recommend restaurants present in the filtered candidate list |
+| **Secrets on server** | `GROQ_API_KEY` lives only in the backend; the browser never calls Groq directly |
 | **Thin client** | Frontend sends preferences and renders API JSON; no business logic duplication |
-| **Graceful degradation** | If Grok is unavailable, backend returns rule-based top-K with template explanations |
+| **Graceful degradation** | If Groq is unavailable, backend returns rule-based top-K with template explanations |
 
 ---
 
@@ -35,13 +35,13 @@ flowchart TB
     API[Python FastAPI Backend]
     DS[(Processed Restaurant Data)]
     HF[Hugging Face Dataset]
-    XAI[xAI Grok API]
+    GROQ_API[Groq API]
 
     User --> UI
     UI -->|HTTPS REST| API
     API --> DS
     HF -.->|one-time ingestion| API
-    API -->|chat completions| XAI
+    API -->|chat completions| GROQ_API
     API --> UI
 ```
 
@@ -52,7 +52,7 @@ flowchart TB
 | **Backend** | Single API service on port 8000 (typical) |
 | **Processed data** | Local parquet/CSV under `data/processed/` |
 | **Hugging Face** | Source dataset for offline ingestion |
-| **xAI Grok** | LLM for rank, explain, summarize |
+| **Groq** | LLM for rank, explain, summarize |
 
 ---
 
@@ -64,8 +64,8 @@ flowchart TB
 | **API** | FastAPI + Uvicorn | REST endpoints, validation, CORS |
 | **Core logic** | Python 3.10+, Pydantic, pandas | Models, filters, services |
 | **Data load** | `datasets`, Hugging Face | Ingest Zomato dataset |
-| **LLM** | Grok via xAI API | OpenAI-compatible `chat.completions` |
-| **LLM client** | `openai` SDK (`base_url=https://api.x.ai/v1`) or `xai-sdk` | Backend-only HTTP to xAI |
+| **LLM** | Groq API | OpenAI-compatible `chat.completions` |
+| **LLM client** | `openai` SDK (`base_url=https://api.groq.com/openai/v1`) | Backend-only HTTP to Groq |
 
 Dataset reference: [ManikaSaini/zomato-restaurant-recommendation](https://huggingface.co/datasets/ManikaSaini/zomato-restaurant-recommendation)
 
@@ -82,7 +82,7 @@ AI-Powered-Restaurant-Recommendation-System/
 │   │   ├── api/                 # FastAPI app, routes, schemas
 │   │   ├── ingestion/           # HF load, preprocess, persist
 │   │   ├── filters/             # Structured restaurant filtering
-│   │   ├── llm/                 # Grok client, prompts, parser
+│   │   ├── llm/                 # Groq client, prompts, parser
 │   │   ├── models/              # UserPreferences, Recommendation
 │   │   └── services/            # Recommendation orchestration
 │   ├── tests/
@@ -156,7 +156,7 @@ flowchart TB
 |--------|---------------|----------------|
 | **ingestion** | `load_dataset.py`, `preprocess.py` | Offline pipeline: HF → clean → parquet |
 | **filters** | `restaurant_filter.py` | Apply location, rating, cuisine, budget |
-| **llm** | `prompts.py`, `grok_client.py`, `parser.py` | Build prompt, call Grok, parse JSON |
+| **llm** | `prompts.py`, `grok_client.py`, `parser.py` | Build prompt, call Groq, parse JSON |
 | **services** | `recommendation_service.py` | End-to-end orchestration for one request |
 | **models** | `preferences.py`, `recommendation.py` | Domain types |
 | **api** | `main.py`, `routes/*`, `schemas.py` | HTTP boundary, validation, CORS |
@@ -184,8 +184,8 @@ sequenceDiagram
     participant S as RecommendationService
     participant D as Dataset Store
     participant FL as Filter
-    participant G as Grok Client
-    participant X as xAI API
+    participant G as Groq Client
+    participant X as Groq API
 
     U->>F: Submit preferences
     F->>A: POST /recommendations
@@ -208,7 +208,7 @@ sequenceDiagram
     F-->>U: Cards + summary
 ```
 
-**Ordering guarantee:** `Filter` always executes before `Grok Client`. The prompt never contains the full raw dataset—only the capped candidate subset.
+**Ordering guarantee:** `Filter` always executes before `Groq Client`. The prompt never contains the full raw dataset—only the capped candidate subset.
 
 ---
 
@@ -245,7 +245,9 @@ Budget buckets are assigned at preprocess time (quantiles or fixed thresholds do
 
 - Backend loads `data/processed/restaurants.parquet` at startup or on first request (lazy singleton).
 - In-memory pandas DataFrame or similar for filter operations.
+- Unique locations and cuisines are parsed from the dataset and cached in memory with a reentrant lock (`threading.RLock`) to prevent deadlocks on nested calls.
 - No database required for MVP; optional PostgreSQL later for multi-tenant or refresh jobs.
+
 
 ---
 
@@ -279,7 +281,7 @@ Budget buckets are assigned at preprocess time (quantiles or fixed thresholds do
 
 ```json
 {
-  "summary": "Optional Grok overview of choices.",
+  "summary": "Optional Groq overview of choices.",
   "recommendations": [
     {
       "restaurant_name": "Example Bistro",
@@ -296,19 +298,23 @@ Budget buckets are assigned at preprocess time (quantiles or fixed thresholds do
 }
 ```
 
-`meta.source` may be `"grok"` or `"fallback"` when xAI is unavailable.
+`meta.source` may be `"grok"` or `"fallback"` when Groq is unavailable.
 
 **Error responses:**
 
 | Status | When |
 |--------|------|
-| `422` | Invalid preferences (validation errors per field) |
+| `422` | Invalid preferences (validation errors per field; includes fuzzy spelling suggestions for unknown locations) |
 | `503` | Optional: Grok hard failure with no fallback enabled |
 | `200` + empty | Filters matched zero restaurants (user message in body) |
 
+> [!NOTE]
+> **Fuzzy Location Suggestions:** In Phase 2, a custom Pydantic field validator checks the requested `location` against the dataset. If the location is unrecognized, the backend generates an error message containing spelling recommendations using `difflib.get_close_matches` (e.g., `"Unknown location 'btmm'. Did you mean: Btm?"`).
+
+
 ---
 
-## 10. Grok Integration Architecture
+## 10. Groq Integration Architecture
 
 ```mermaid
 flowchart LR
@@ -317,19 +323,19 @@ flowchart LR
         GRK[grok_client.py]
         PAR[parser.py]
     end
-    XAI[xAI API v1]
+    GROQ[Groq API v1]
 
     PRM --> GRK
-    GRK --> XAI
-    XAI --> GRK
+    GRK --> GROQ
+    GROQ --> GRK
     GRK --> PAR
 ```
 
 | Concern | Design |
 |---------|--------|
-| **Authentication** | `XAI_API_KEY` from `backend/.env` |
-| **Model** | `GROK_MODEL` env (e.g. `grok-2-latest`) |
-| **Transport** | HTTPS to `https://api.x.ai/v1` |
+| **Authentication** | `GROQ_API_KEY` from `backend/.env` |
+| **Model** | `GROQ_MODEL` env (e.g. `llama-3.3-70b-versatile`) |
+| **Transport** | HTTPS to `https://api.groq.com/openai/v1` |
 | **Prompt** | System: assistant role + no hallucinated venues; User: candidates JSON + preferences |
 | **Output** | Prefer structured JSON; parser validates and maps to `Recommendation` models |
 | **Grounding** | Post-process: drop names not in candidate set; backfill rating/cost from dataset |
@@ -345,7 +351,7 @@ Bridges structured data and Grok:
 1. **Filter** — reduce full dataset to user-relevant rows.
 2. **Rank (pre-LLM)** — sort by rating/votes; cap at 20–30 rows.
 3. **Prompt build** — inject `UserPreferences` + candidate table.
-4. **Grok** — rank top `top_k`, explanations, optional summary.
+4. **Groq** — rank top `top_k`, explanations, optional summary.
 5. **Ground** — align LLM output to dataset rows.
 
 ```mermaid
@@ -355,7 +361,7 @@ flowchart TD
     F[Filter Pipeline]
     C[Candidate Cap N=30]
     PB[Prompt Builder]
-    GK[Grok]
+    GK[Groq]
     GR[Grounding Layer]
     OUT[API Response]
 
@@ -409,23 +415,23 @@ flowchart TB
     end
     subgraph trusted [Trusted - Server]
         BE[Backend]
-        ENV[.env with XAI_API_KEY]
+        ENV[.env with GROQ_API_KEY]
     end
     subgraph external [External]
-        XAI[xAI]
+        GROQ[Groq]
     end
 
     FE -->|no API key| BE
     BE --> ENV
-    BE --> XAI
+    BE --> GROQ
 ```
 
 | Rule | Rationale |
 |------|-----------|
-| Never expose `XAI_API_KEY` to frontend | Prevents key theft and billing abuse |
+| Never expose `GROQ_API_KEY` to frontend | Prevents key theft and billing abuse |
 | Validate all inputs on backend | Client validation is UX only |
 | CORS restrict to known origins | Reduce cross-site abuse in dev/prod |
-| Ground Grok output | Prevents fabricated restaurant names reaching users |
+| Ground Groq output | Prevents fabricated restaurant names reaching users |
 
 ---
 
@@ -449,7 +455,7 @@ flowchart TB
 
 Environment variables:
 
-**Backend:** `XAI_API_KEY`, `GROK_MODEL`, `CORS_ORIGINS`, optional `DATA_PATH`
+**Backend:** `GROQ_API_KEY`, `GROQ_MODEL`, `CORS_ORIGINS`, optional `DATA_PATH`
 
 **Frontend:** `NEXT_PUBLIC_API_URL`
 
@@ -484,7 +490,7 @@ Environment variables:
 |-----------|-------------------------------|
 | Grounded in real data | Grounding layer + candidate-only prompts |
 | Filters before LLM | `RecommendationService` pipeline order |
-| Personalized explanations | Grok on preferences + candidates |
+| Personalized explanations | Groq on preferences + candidates |
 | Readable output | Frontend renders fixed five-field card schema |
 
 ---

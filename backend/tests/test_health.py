@@ -13,14 +13,16 @@ def test_health_endpoint():
     assert "data_ready" in body
 
 
-def test_recommendations_not_implemented():
+def test_recommendations_implemented():
     response = client.post(
         "/recommendations",
         json={
-            "location": "Bangalore",
+            "location": "Btm",
             "budget": "medium",
             "cuisine": "Italian",
             "min_rating": 4.0,
         },
     )
-    assert response.status_code == 501
+    assert response.status_code == 200
+
+
