@@ -15,7 +15,6 @@ venv/
 
 # Data
 data/raw/
-data/processed/*.parquet
 data/processed/*.csv
 !data/processed/.gitkeep
 
